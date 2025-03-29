@@ -4,7 +4,7 @@ from segmentacion import MaskGeneratorInterface, BinaryMaskGenerator
 import cv2
 import heapq
 import pyautogui
-
+import a_star
 
 class Mapa():
     def __init__(self):
@@ -18,53 +18,17 @@ class Mapa():
 
         self.generar_mapa(mask, coord_jugador, coord_nodos)
         
-        closest_target = self.get_closest_target(coord_jugador, coord_nodos)
-        print(closest_target)
+        closest_target = a_star.get_closest_target(coord_jugador, coord_nodos, self.matrix)
         path = []
         if closest_target is not None:
-            path = self.astar(coord_jugador, closest_target)
+            path = a_star.astar(coord_jugador, closest_target, self.matrix)
         if path:
             self.dibujar_ruta(path)
-            print(path)
-            self._filter_nodes_by_distance(path, step=100)
-            print(self.ruta_filtrada)
+            self.ruta_filtrada=  a_star.filter_nodes_by_distance(path, step=50)
             self._draw_nodes_on_map()
+            print(self.ruta_filtrada)
         self.mostrar_mapa()
 
-
-        """
-            nodos = []
-            pos_jugador = detector.()
-            if pos_jugador is not None:
-
-                nodos_raw = detector.obtener_nodos()
-                if nodos_raw is not None:
-                    for nodo in nodos_raw:
-
-                    self.generar_mapa(np.ones((1080, 1920), dtype=np.uint8), (xp, yp), nodos)
-                    self.mask_to_navigation_matrix()
-                    
-                    if closest_target is not None:
-                        
-                        self.dibujar_ruta(path)
-                        self._extraer_ruta(path)
-                        print("RUTA:")
-                        if self.ruta:
-                            print(self.ruta)
-                            
-                            print("RUTA FILTRADA:")
-                            print(self.ruta_filtrada)
-                            self._draw_nodes_on_map()
-                            if len(self.ruta_filtrada) >= 2:
-                                self._align_camera_to_node(self.ruta_filtrada[1][0])
-                    else: print("No se encontro ruta")
-                    
-                else:
-                    self.generar_mapa(np.ones((1080, 1920), dtype=np.uint8), (xp, yp))
-            else:
-                self.generar_mapa(np.ones((1080, 1920), dtype=np.uint8))
-        self.mostrar_mapa()
-        """
     def generar_mapa(self, mapa, posicion_jugador, nodos):
         if mapa.ndim == 2:
             self.mapa_color = cv2.cvtColor(mapa * 255, cv2.COLOR_GRAY2BGR)
@@ -72,9 +36,11 @@ class Mapa():
             raise ValueError("El mapa debe ser una imagen en escala de grises")
         
         for nodo in nodos:
-            cv2.circle(self.mapa_color, nodo, 5, (0, 0, 255), -1)
-        if posicion_jugador:
-            cv2.circle(self.mapa_color, posicion_jugador, 5, (255, 0, 0), -1)
+            print(nodo)
+            x, y = nodo
+            cv2.circle(self.mapa_color, (x,y), 5, (0, 0, 255), -1)
+        
+        cv2.circle(self.mapa_color, posicion_jugador, 5, (255, 0, 0), -1)
 
         # Mostrar el mapa generado para depuración
         self._mask_to_navigation_matrix()
@@ -104,83 +70,10 @@ class Mapa():
         self.matrix[np.all(self.mapa_color == [255, 0, 0], axis=-1)] = 3  # Punto de inicio
 
 
-    # Función de distancia Manhattan
-    def manhattan_distance(self, start, end):
-        return abs(start[0] - end[0]) + abs(start[1] - end[1])
-
     def euclidean_distance(self, start, end):
         return np.sqrt((start[0] - end[0]) ** 2 + (start[1] - end[1]) ** 2)
 
     # Obtener el objetivo más cercano
-    def is_blocked(self, point):
-        x, y = point
-        return self.matrix[y, x] == 1  # 1 representa un obstáculo en el mapa
-
-    # Obtener el objetivo más cercano, pero asegurarse de que no esté bloqueado
-    def get_closest_target(self, start, targets):
-        closest_target = None
-        min_distance = float('inf')
-
-        # Filtramos los objetivos bloqueados para evitar cálculo innecesario
-        valid_targets = [target for target in targets if not self.is_blocked(target)]
-        
-        for target in valid_targets:
-            dist = self.manhattan_distance(start, target)
-            if dist < min_distance:
-                min_distance = dist
-                closest_target = target
-
-        return closest_target  # Devolver None si no hay objetivos válidos# Devolver None si no hay objetivos válidos
-
-    # Implementación del A* básico
-
-
-    def astar(self, start, goal):
-        open_list = []
-        heapq.heappush(open_list, (0, start))  # Colocamos el nodo inicial
-        came_from = {}
-        g_costs = {start: 0}  # Costo acumulado desde el inicio
-        f_costs = {start: self.euclidean_distance(start, goal)}  # Costo total estimado
-        visited = set()  # Conjunto de nodos visitados
-
-        while open_list:
-            _, current = heapq.heappop(open_list)  # Obtenemos el nodo con el costo más bajo
-
-            if current == goal:
-                # Reconstruir la ruta desde el nodo final
-                path = []
-                while current in came_from:
-                    path.append(current)
-                    current = came_from[current]
-                path.append(start)
-                return path[::-1]  # Devuelve la ruta invertida (de start a goal)
-
-            visited.add(current)
-
-            for neighbor in self.get_neighbors(current):
-                if neighbor in visited:  # Ignorar los nodos ya visitados
-                    continue
-
-                tentative_g_cost = g_costs[current] + 1  # Costo acumulado al vecino
-
-                if neighbor not in g_costs or tentative_g_cost < g_costs[neighbor]:
-                    came_from[neighbor] = current
-                    g_costs[neighbor] = tentative_g_cost
-                    f_costs[neighbor] = tentative_g_cost + self.euclidean_distance(neighbor, goal)
-                    heapq.heappush(open_list, (f_costs[neighbor], neighbor))  # Agregar el vecino a la cola
-
-        return None  # No se encontró ruta
-
-    # Función para obtener los vecinos del nodo actual
-    def get_neighbors(self, node):
-        x, y = node
-        neighbors = []
-        for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1), (0, 0), (1, 1), (1, -1), (-1, 1)]:
-            nx, ny = x + dx, y + dy
-            if 0 <= nx < len(self.matrix[0]) and 0 <= ny < len(self.matrix):
-                neighbors.append((nx, ny))
-        return neighbors
-
     def dibujar_ruta(self, path):
         if path:  
             for i in range(len(path) - 1):
@@ -194,30 +87,6 @@ class Mapa():
         if ruta:
             for punto in ruta:
                 self.ruta.append((punto[0], punto[1]))
-
-
-
-    # -------------------------------
-    # Filtrado de nodos
-    # -------------------------------
-    def _filter_nodes_by_distance(self, path, step=100):
-        self.ruta_filtrada = []
-        """Filtra los nodos para optimizar la ruta, tomando uno cada 'step' píxeles."""
-        if not path:
-            self.ruta_filtrada = []
-        
-        if path:
-            self.ruta_filtrada = [path[0]]  # Primer nodo (posición inicial)
-            last_node = path[0]
-
-            for node in path[1:]:
-                dist = np.linalg.norm(np.array(node) - np.array(last_node))
-                if dist >= step:
-                    self.ruta_filtrada.append(node)
-                    last_node = node
-
-            if self.ruta_filtrada[-1] != path[-1]:
-                self.ruta_filtrada.append(path[-1])
 
     # -------------------------------
     # Dibujo de nodos en el mapa

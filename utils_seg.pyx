@@ -21,6 +21,10 @@ class MaskGeneratorInterface(ABC):
     @abstractmethod
     def obtener_resultados(self):
         pass
+
+    @abstractmethod
+    def obtener_mascaras(self):
+        pass
     
 
 class BinaryMaskGenerator(MaskGeneratorInterface):
@@ -33,6 +37,7 @@ class BinaryMaskGenerator(MaskGeneratorInterface):
         self.tamanio_imagen = tamanio_imagen
         self.modelo = YOLO(ruta_modelo)
         self.resultados = None
+        self.mascaras = []
         self.image = None
         self.image_results = np.ones(self.tamanio_imagen, dtype=np.uint8) * 255
         self.mascara_invertida = None
@@ -49,8 +54,8 @@ class BinaryMaskGenerator(MaskGeneratorInterface):
             self.resultados = self.modelo(imagen, conf=conf, classes=filtro)  
         else:
             self.resultados = self.modelo(imagen, conf=conf)# Esta línea pasa la imagen al modelo y obtiene las predicciones
-        #return resultados  # Suponiendo que el modelo devuelve un listado de resultados 
-
+        #return resultados  # Suponiendo que el modelo devuelve un listado de resultados
+        
         self._generar_mascara(dibujar)
 
         # Iteramos sobre los resultados de segmentación
@@ -62,7 +67,7 @@ class BinaryMaskGenerator(MaskGeneratorInterface):
         :return: Imagen binaria en formato numpy array.
         """
         # Acumulador para las máscaras
-        #self.mascaras = np.array([])
+        self.mascaras = []
         mascara_acumulada = None  # Inicializar la variable
         
         # Iteramos sobre los resultados de segmentación
@@ -73,7 +78,7 @@ class BinaryMaskGenerator(MaskGeneratorInterface):
                     for mask in masks_data:
                         # Asegurarse de que la máscara esté en formato binario (0 o 1)
                         mask_resized = (mask > 0).astype(np.uint8)
-                        #np.append(self.mascaras, mask_resized)
+                        self.mascaras.append(mask_resized)
 
                         # Sumar directamente con cv2.bitwise_or
                         if mascara_acumulada is None:
@@ -90,6 +95,7 @@ class BinaryMaskGenerator(MaskGeneratorInterface):
                 mascara_acumulada = np.zeros(self.tamanio_imagen, dtype=np.uint8)
 
         self.mascara_invertida = 1 - mascara_acumulada
+        self.mascara_invertida = self.mascara_invertida
         self._reduce_obstacle_area(10)
         if dibujar:
             self._mostrar_mascara()
@@ -112,6 +118,9 @@ class BinaryMaskGenerator(MaskGeneratorInterface):
 
     def obtener_resultados(self):
         return self.resultados
+
+    def obtener_mascaras(self):
+        return self.mascaras
 
     def obtener_mascara(self):
         return self.mascara_invertida
